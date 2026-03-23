@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Melbourne Microclimate Fluid Visualization with Pose Detection</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+    <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #0a0a14;
+            font-family: 'Arial', sans-serif;
+        }
+        
+        #info-panel {
+            position: absolute;
+            top: 90px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            border-radius: 12px;
+            color: white;
+            max-width: 350px;
+            max-height: 70vh;
+            overflow-y: auto;
+            display: none;
+            z-index: 100;
+        }
+        
+        #info-panel.active {
+            display: block;
+        }
+        
+        #info-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        #info-panel-header h2 {
+            margin: 0;
+            font-size: 20px;
+        }
+        
+        #close-info-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            color: white;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+        }
+        
+        #close-info-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.1);
+        }
+        
+        .data-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 8px 0;
+            font-size: 13px;
+        }
+        
+        .color-box {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+        }
+        
+        #controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+        
+        .btn {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: none;
+            padding: 12px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            color: white;
+            transition: all 0.3s;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+        
+        .btn.active {
+            background: rgba(16, 185, 129, 0.3);
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+        }
+        
+        .btn-label {
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        #status {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 12px 20px;
+            border-radius: 8px;
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            z-index: 100;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        /* NEW: Gesture status indicator */
+        #gesture-status {
+            position: absolute;
+            bottom: 120px;
+            left: 30px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 15px 20px;
+            border-radius: 8px;
+            color: white;
+            z-index: 100;
+            display: none;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        #gesture-status.active {
+            display: block;
+            animation: gestureGlow 2s infinite;
+        }
+        
+        @keyframes gestureGlow {
+            0%, 100% { 
+                box-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+            }
+            50% { 
+                box-shadow: 0 0 40px rgba(255, 255, 255, 0.6);
+            }
+        }
+        
+        .gesture-icon {
+            font-size: 24px;
+            margin-right: 10px;
+        }
+        
+        /* Legend styling - bottom right corner */
+        #legend {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 15px 20px;
+            border-radius: 12px;
+            color: white;
+            font-size: 13px;
+            z-index: 100;
+            min-width: 220px;
+        }
+        
+        #legend h3 {
+            margin: 0 0 12px 0;
+            font-size: 15px;
+            font-weight: 600;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 8px 0;
+            white-space: nowrap;
+        }
+        
+        .legend-color {
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            flex-shrink: 0;
+        }
+        
+        .legend-text {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        #title {
+            position: absolute;
+            bottom: 30px;
+            left: 30px;
+            color: white;
+            z-index: 100;
+        }
+        
+        #title h1 {
+            margin: 0;
+            font-size: 48px;
+            font-weight: bold;
+        }
+        
+        #title p {
+            margin: 5px 0 0 0;
+            opacity: 0.6;
+            font-size: 14px;
+        }
+        
+        #camera-permission {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 30px;
+            border-radius: 12px;
+            color: white;
+            text-align: center;
+            z-index: 1000;
+            display: none;
+        }
+        
+        #camera-permission.show {
+            display: block;
+        }
+        
+        #camera-permission button {
+            background: #0096ff;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+        
+        #camera-permission button:hover {
+            background: #0077cc;
+        }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <button class="btn" id="data-btn" onclick="handleToggleInfo()">
+            <span>📊</span>
+            <span class="btn-label">Live Data</span>
+        </button>
+        <button class="btn" id="camera-btn" onclick="handleToggleCamera()">
+            <span id="camera-icon">📹</span>
+            <span class="btn-label" id="camera-label">Camera Off</span>
+        </button>
+        <button class="btn" id="music-btn" onclick="handleToggleMusic()">
+            <span id="music-icon">🔇</span>
+            <span class="btn-label" id="music-label">Music Off</span>
+        </button>
+    </div>
+    
+    <div id="status">
+        <div class="status-dot" style="background: #10b981;"></div>
+        <span id="status-text">Loading...</span>
+    </div>
+    
+    <!-- NEW: Gesture Status Indicator -->
+    <div id="gesture-status">
+        <span class="gesture-icon" id="gesture-icon">✋</span>
+        <span id="gesture-text">Idle</span>
+    </div>
+    
+    <div id="info-panel"></div>
+    
+    <div id="camera-permission">
+        <h2>Camera Access Required</h2>
+        <p>This visualization uses your camera to detect body movements<br>and make the fluid simulation interactive.</p>
+        <p style="font-size: 12px; opacity: 0.7; margin-top: 10px;">Your camera feed is processed locally and not recorded or transmitted.</p>
+        <button onclick="handleCameraPermission()">Enable Camera</button>
+    </div>
+    
+    <div id="title">
+        <h1>Melbourne Flow</h1>
+        <p>Real-time microclimate visualization with body interaction</p>
+    </div>
+    
+    <!-- Background Music Audio Element -->
+    <audio id="background-music" loop>
+        <source src="background-music.mp3" type="audio/mpeg">
+        <source src="background-music.ogg" type="audio/ogg">
+        Your browser does not support the audio element.
+    </audio>
+
+    <!-- Load JavaScript files in order -->
+    <script src="fluidfield.js"></script>
+    <script src="gesture.js"></script>
+    <script src="velocity.js"></script>
+    <script src="data.js"></script>
+    <script src="motion.js"></script>
+    <script src="particle.js"></script>
+    <script src="ml5-pose.js"></script>
+    <script src="ui-overlay.js"></script>
+    <script src="sketch.js"></script>
+    
+    <script>
+        var showCameraBackground = false;
+        var cameraInitialized = false;
+        
+        // Update gesture status display in real-time
+        function updateGestureStatus() {
+            if (typeof gestureState === 'undefined' || !cameraInitialized || !showCameraBackground) {
+                document.getElementById('gesture-status').classList.remove('active');
+                return;
+            }
+            
+            var gestureEl = document.getElementById('gesture-status');
+            var iconEl = document.getElementById('gesture-icon');
+            var textEl = document.getElementById('gesture-text');
+            
+            if (typeof bothHandsRaised !== 'undefined' && bothHandsRaised) {
+                gestureEl.classList.add('active');
+                gestureEl.style.background = 'rgba(147, 51, 234, 0.3)';
+                iconEl.textContent = '🌿';
+                textEl.textContent = 'Both Hands Raised - Fractals Emerging';
+            } else if (typeof oneHandRaised !== 'undefined' && oneHandRaised) {
+                gestureEl.classList.add('active');
+                gestureEl.style.background = 'rgba(59, 130, 246, 0.3)';
+                iconEl.textContent = '🌀';
+                textEl.textContent = 'One Hand Raised - Spirals Active';
+            } else if (typeof armsSpread !== 'undefined' && armsSpread) {
+                gestureEl.classList.add('active');
+                gestureEl.style.background = 'rgba(16, 185, 129, 0.3)';
+                iconEl.textContent = '🤲';
+                textEl.textContent = 'Arms Spread - Particles Expanding';
+            } else if (gestureState === 'moving') {
+                gestureEl.classList.add('active');
+                gestureEl.style.background = 'rgba(245, 158, 11, 0.3)';
+                iconEl.textContent = '💨';
+                textEl.textContent = 'Moving - Particles Following';
+            } else {
+                gestureEl.classList.remove('active');
+            }
+        }
+        
+        // Call this function every frame to update gesture display
+        setInterval(updateGestureStatus, 100);
+        
+        window.drawCameraBackground = function() {
+            if (showCameraBackground && typeof drawBodySilhouette === 'function') {
+                if (typeof colorMode === 'function') {
+                    colorMode(RGB, 255, 255, 255, 255);
+                }
+                drawBodySilhouette();
+            }
+        };
+        
+        window.applyBodyInteraction = function() {
+            if (typeof applyBodyForceToParticles === 'function') {
+                applyBodyForceToParticles();
+            }
+        };
+        
+        function handleToggleInfo() {
+            var panel = document.getElementById('info-panel');
+            var btn = document.getElementById('data-btn');
+            
+            if (panel.classList.contains('active')) {
+                panel.classList.remove('active');
+                btn.classList.remove('active');
+            } else {
+                panel.classList.add('active');
+                btn.classList.add('active');
+                updateInfoPanel();
+            }
+        }
+        
+        function updateInfoPanel() {
+            if (typeof sensorData === 'undefined' || !sensorData) return;
+            
+            var panel = document.getElementById('info-panel');
+            var tempValue = sensorData.air_temperature ? sensorData.air_temperature.toFixed(1) : 'N/A';
+            var humidValue = sensorData.relative_humidity ? sensorData.relative_humidity.toFixed(1) : 'N/A';
+            var pressValue = sensorData.atmospheric_pressure ? sensorData.atmospheric_pressure.toFixed(1) : 'N/A';
+            var windValue = sensorData.wind_speed ? sensorData.wind_speed.toFixed(1) : 'N/A';
+            var gustValue = sensorData.wind_gust_speed ? sensorData.wind_gust_speed.toFixed(1) : 'N/A';
+            var pm25Value = sensorData.pm2_5 ? sensorData.pm2_5.toFixed(1) : 'N/A';
+            var pm10Value = sensorData.pm10 ? sensorData.pm10.toFixed(1) : 'N/A';
+            var noiseValue = sensorData.noise_level ? sensorData.noise_level.toFixed(1) : 'N/A';
+            
+            panel.innerHTML = '<div id="info-panel-header">' +
+                '<h2>Melbourne Microclimate</h2>' +
+                '<button id="close-info-btn" onclick="handleToggleInfo()">✕</button>' +
+                '</div>' +
+                '<div style="margin-bottom: 20px;">' +
+                '<h3 style="margin: 0 0 10px 0; font-size: 14px; opacity: 0.8;">Live Data Mapping:</h3>' +
+                '<div class="data-item"><div class="color-box" style="background: rgb(220, 20, 60);"></div><span>Temperature: ' + tempValue + '°C</span></div>' +
+                '<div class="data-item"><div class="color-box" style="background: rgb(20, 20, 25);"></div><span>Humidity: ' + humidValue + '%</span></div>' +
+                '<div class="data-item"><div class="color-box" style="background: rgb(90, 0, 160);"></div><span>Pressure: ' + pressValue + ' hPa</span></div>' +
+                '<div class="data-item"><div class="color-box" style="background: rgb(0, 150, 255);"></div><span>Wind Speed: ' + windValue + ' km/h</span></div>' +
+                '<div class="data-item"><div class="color-box" style="background: rgb(255, 0, 180);"></div><span>Gust Speed: ' + gustValue + ' km/h</span></div>' +
+                '<div class="data-item"><div class="color-box" style="background: rgb(255, 170, 0);"></div><span>PM2.5: ' + pm25Value + ' µg/m³</span></div>' +
+                '<div class="data-item"><div class="color-box" style="background: rgb(0, 200, 150);"></div><span>PM10: ' + pm10Value + ' µg/m³</span></div>' +
+                '<div class="data-item"><div class="color-box" style="background: rgb(200, 170, 255);"></div><span>Noise Level: ' + noiseValue + ' dB</span></div>' +
+                '</div>' +
+                '<div style="font-size: 13px; opacity: 0.8;">' +
+                '<h3 style="margin: 0 0 10px 0; font-size: 14px;">Paint Flow Physics:</h3>' +
+                '<p style="margin: 5px 0;">• <strong>Cohesion</strong> - Blobs merge together</p>' +
+                '<p style="margin: 5px 0;">• <strong>Surface Tension</strong> - Blob-like behavior</p>' +
+                '<p style="margin: 5px 0;">• <strong>Organic Flow</strong> - Paint-like spreading</p>' +
+                '</div>' +
+                '<div style="font-size: 13px; opacity: 0.8; margin-top: 15px;">' +
+                '<h3 style="margin: 0 0 10px 0; font-size: 14px; color: #60a5fa;">✨ Enhanced Gestures:</h3>' +
+                '<p style="margin: 5px 0;">• <strong>One Hand Raised</strong> 🌀 → Spirals emerge at particle centers</p>' +
+                '<p style="margin: 5px 0;">• <strong>Both Hands Raised</strong> 🌿 → Fractal trees grow from particles</p>' +
+                '<p style="margin: 5px 0;">• <strong>Arms Spread</strong> 🤲 → Particles expand outward</p>' +
+                '<p style="margin: 5px 0;">• <strong>Movement</strong> 💨 → Particles follow your motion</p>' +
+                '</div>';
+        }
+        
+        function handleCameraPermission() {
+            document.getElementById('camera-permission').classList.remove('show');
+            console.log('Camera permission acknowledged, initializing ML5...');
+            
+            if (cameraInitialized) {
+                console.log('Camera already initialized, just enabling...');
+                showCameraBackground = true;
+                updateCameraUI(true);
+                return;
+            }
+            
+            if (typeof setupML5 !== 'function') {
+                console.error('setupML5 function not found! Make sure ml5-pose.js is loaded.');
+                updateStatusText('Error: ML5 script not loaded');
+                return;
+            }
+            
+            console.log('Calling setupML5()...');
+            try {
+                setupML5();
+                cameraInitialized = true;
+                showCameraBackground = true;
+                updateStatusText('Initializing camera...');
+            } catch (error) {
+                console.error('Error calling setupML5:', error);
+                updateStatusText('Camera initialization error');
+                return;
+            }
+            
+            var attempts = 0;
+            var checkVideo = setInterval(function() {
+                attempts++;
+                
+                if (typeof video !== 'undefined' && video && video.elt) {
+                    console.log('Video element found! Camera is active.');
+                    updateCameraUI(true);
+                    updateStatusText('Camera Active - Try raising your hands!');
+                    clearInterval(checkVideo);
+                } else if (attempts > 30) {
+                    console.error('Video element not found after 30 attempts');
+                    updateStatusText('Camera failed - Check browser permissions');
+                    clearInterval(checkVideo);
+                }
+            }, 500);
+        }
+        
+        function updateCameraUI(isEnabled) {
+            var btn = document.getElementById('camera-btn');
+            var icon = document.getElementById('camera-icon');
+            var label = document.getElementById('camera-label');
+            
+            if (isEnabled) {
+                btn.classList.add('active');
+                icon.textContent = '📹';
+                label.textContent = 'Camera On';
+            } else {
+                btn.classList.remove('active');
+                icon.textContent = '📷';
+                label.textContent = 'Camera Off';
+            }
+        }
+        
+        function handleToggleCamera() {
+            console.log('Camera button clicked');
+            
+            if (!cameraInitialized) {
+                console.log('Camera not initialized, showing permission dialog');
+                document.getElementById('camera-permission').classList.add('show');
+                return;
+            }
+            
+            if (typeof togglePoseDetection === 'function') {
+                var isEnabled = togglePoseDetection();
+                
+                showCameraBackground = isEnabled;
+                updateCameraUI(isEnabled);
+                
+                if (isEnabled) {
+                    updateStatusText('Camera Active - Try raising your hands!');
+                    console.log('Camera enabled, silhouette should appear');
+                    
+                    if (typeof poseDetectionEnabled !== 'undefined') {
+                        poseDetectionEnabled = true;
+                    }
+                } else {
+                    updateStatusText('Visualization Active');
+                    console.log('Camera disabled');
+                }
+            } else {
+                console.error('togglePoseDetection not available');
+            }
+        }
+        
+        function updateStatusText(text) {
+            var statusEl = document.getElementById('status-text');
+            if (statusEl) {
+                statusEl.textContent = text;
+            }
+        }
+        
+        window.addEventListener('load', function() {
+            console.log('Page loaded');
+            console.log('setupML5 exists:', typeof setupML5);
+            console.log('togglePoseDetection exists:', typeof togglePoseDetection);
+        });
+        
+        // Music control functions
+        var musicPlaying = false;
+        var backgroundMusic = null;
+        
+        function handleToggleMusic() {
+            if (!backgroundMusic) {
+                backgroundMusic = document.getElementById('background-music');
+            }
+            
+            var btn = document.getElementById('music-btn');
+            var icon = document.getElementById('music-icon');
+            var label = document.getElementById('music-label');
+            
+            if (musicPlaying) {
+                // Stop music
+                backgroundMusic.pause();
+                musicPlaying = false;
+                btn.classList.remove('active');
+                icon.textContent = '🔇';
+                label.textContent = 'Music Off';
+                console.log('Music stopped');
+            } else {
+                // Play music
+                backgroundMusic.play().then(function() {
+                    musicPlaying = true;
+                    btn.classList.add('active');
+                    icon.textContent = '🎵';
+                    label.textContent = 'Music On';
+                    console.log('Music playing');
+                }).catch(function(error) {
+                    console.error('Error playing music:', error);
+                    alert('Could not play music. Please make sure you have a file named "background-music.mp3" in the same folder as your HTML file.');
+                });
+            }
+        }
+    </script>
+</body>
+</html>
